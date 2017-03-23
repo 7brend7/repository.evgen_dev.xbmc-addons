@@ -10,3 +10,4 @@ SORT_TYPES = ['view', 'rate', 'new']
 QUALITYS = [None, '360', '480', '720', '1080']
 
 BOOKMARK_DIR = 'KODI'
+CORS_HEADER = 'Origin=http://player.tree.tv'

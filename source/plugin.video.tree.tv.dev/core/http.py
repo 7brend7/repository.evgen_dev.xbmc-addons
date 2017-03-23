@@ -7,6 +7,8 @@ from xbmcup.app import Item
 from common import Render
 from auth import Auth
 from defines import *
+from random import randint
+import math
 
 reload(sys)
 sys.setdefaultencoding("UTF8")
@@ -460,7 +462,7 @@ class ResolveLink(xbmcup.app.Handler, HttpData, Render):
                         if(movies['folder_title'] == folder or folder == ''):
                             for episode in movies['movies'][q]:
                                 if episode[0].find(self.params['file']) != -1:
-                                    return self.get_play_url(episode[1], resolution)
+                                    return self.get_play_url_guarded(episode[1], resolution)
 
         return None
 
@@ -481,6 +483,93 @@ class ResolveLink(xbmcup.app.Handler, HttpData, Render):
         html = self.ajax(general_pl_url)
         if not html: return None
         html = html.encode('utf-8').split("\n")
+        return_next = False
+        for line in html:
+            if(return_next):
+                print line
+                return line
+            if(line.find('x'+resulution) != -1):
+                return_next = True
+
+        return None
+
+    def get_play_url_guarded(self, url, resolution):
+        parsed_url = urlparse.urlparse(self.get_iframe(url))
+        playerKeyParams = self.getPlayerKeyParams()
+        source = self.initMainModule(url.split('/')[2], playerKeyParams)
+        pl_url = source[0]['sources'][0]['src']
+        
+        return self.get_guarded_playlist(pl_url, resolution) + '|' + CORS_HEADER
+
+    def getPlayerKeyParams(self):
+        app_js = self.load('http://player.tree.tv/js/app.js');
+        values = re.findall(r'var\s*(.*?)\s*=\s*(.*?);', app_js, re.DOTALL | re.MULTILINE)
+
+        p = 2
+        g = 293
+        for value in values:
+            if(value[0] == 'playerKeyParams'):
+                g = float(re.findall(r'g: (\d+)',values[1][1])[0])
+                p = float(re.findall(r'p: (\d+)',values[1][1])[0])
+                break
+
+        return {
+            'g': g,
+            'p': p
+        }
+
+    def sendCheckParams(self, playerKeyParams):
+        playerKeyParams['key'] = randint(1,7)
+        numClient = pow(playerKeyParams['g'], playerKeyParams['key']);
+        clientKey = math.fmod(numClient, playerKeyParams['p']);
+
+        try:
+            response = xbmcup.net.http.post('http://player.tree.tv/guard/', { 'key' : clientKey }, allow_redirects=False)
+        except xbmcup.net.http.exceptions.RequestException:
+                print traceback.format_exc()
+                return None
+
+        self.cookie = response.cookies
+        return json.loads(response.text)
+
+    def initMainModule(self, fileId, playerKeyParams):
+        
+        self.cookie = {}
+        serverData = self.sendCheckParams(playerKeyParams)
+
+        if (serverData['p'] != playerKeyParams['p'] and serverData['g'] != playerKeyParams['g']):
+            playerKeyParams['p'] = serverData['p']
+            playerKeyParams['g'] = serverData['g']
+            return self.initMainModule(fileId, playerKeyParams)
+        else:
+            b = pow(serverData['s_key'], playerKeyParams['key'])
+            skc = math.fmod(b, serverData['p']);
+            try:
+                response = xbmcup.net.http.post('http://player.tree.tv/guard/guard/', {
+                    'file': fileId,
+                    'source': '1',
+                    'skc': skc
+                }, allow_redirects=False, cookies=self.cookie)
+            except xbmcup.net.http.exceptions.RequestException:
+                print traceback.format_exc()
+                return None
+
+            self.cookie = response.cookies
+            try:
+                jsonResponse = json.loads(response.text)
+            except:
+                return self.initMainModule(fileId, playerKeyParams)
+
+            return jsonResponse
+
+    def get_guarded_playlist(self, general_pl_url, resulution):
+        try:
+            html = xbmcup.net.http.get(general_pl_url, allow_redirects=False)
+        except xbmcup.net.http.exceptions.RequestException:
+            print traceback.format_exc()
+            return None
+
+        html = html.text.encode('utf-8').split("\n")
         return_next = False
         for line in html:
             if(return_next):
