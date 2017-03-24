@@ -496,8 +496,17 @@ class ResolveLink(xbmcup.app.Handler, HttpData, Render):
     def get_play_url_guarded(self, url, resolution):
         parsed_url = urlparse.urlparse(self.get_iframe(url))
         playerKeyParams = self.getPlayerKeyParams()
-        source = self.initMainModule(url.split('/')[2], playerKeyParams)
-        pl_url = source[0]['sources'][0]['src']
+        movie_id = url.split('/')[2]
+        source = self.initMainModule(movie_id, playerKeyParams)
+        sourceSorted = {}
+        for item in source:
+            for sources in item['sources']:
+                sourceSorted[sources['point']] = sources['src']
+
+        if not movie_id in sourceSorted:
+            return None
+
+        pl_url = sourceSorted[movie_id]
         
         return self.get_guarded_playlist(pl_url, resolution) + '|' + CORS_HEADER
 
