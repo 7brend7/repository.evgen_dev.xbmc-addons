@@ -9,7 +9,12 @@ from auth import Auth
 from defines import *
 from random import randint
 import math
-from collections import OrderedDict
+
+try:
+    from collections import OrderedDict
+except ImportError:
+    # python 2.6 or earlier, use backport
+    from ordereddict import OrderedDict
 
 reload(sys)
 sys.setdefaultencoding("UTF8")
